@@ -214,12 +214,14 @@ export class JsonApiDatastore {
     return queryParams ? `${url}?${queryParams}` : url;
   }
 
-  protected getRelationships(data: any): any {
+  protected getRelationships<T extends JsonApiModel>(data: T): any {
     let relationships: any;
 
     for (const key in data) {
       if (data.hasOwnProperty(key)) {
-        if (data[key] instanceof JsonApiModel) {
+        const value: any = data[key];
+
+        if (value instanceof JsonApiModel) {
           relationships = relationships || {};
 
           if (data[key].id) {
@@ -227,7 +229,7 @@ export class JsonApiDatastore {
               data: this.buildSingleRelationshipData(data[key])
             };
           }
-        } else if (data[key] instanceof Array && data[key].length > 0 && this.isValidToManyRelation(data[key])) {
+        } else if (value instanceof Array && data[key].length > 0 && this.isValidToManyRelation(data[key])) {
           relationships = relationships || {};
 
           const relationshipData = data[key]
@@ -241,7 +243,22 @@ export class JsonApiDatastore {
       }
     }
 
+    this.relationsToBeDeleted(data).forEach((toDelete) => {
+      relationships = relationships || {};
+      relationships[toDelete] = { data: null };
+    });
+
     return relationships;
+  }
+
+  private relationsToBeDeleted<T extends JsonApiModel>(model: T) {
+    const belongsToMetadata: [{propertyName: string, relationship: string}] = Reflect.getMetadata('BelongsTo', model);
+
+    return belongsToMetadata == null
+      ? []
+      : belongsToMetadata.filter((entity) => model.hasOwnProperty(entity.propertyName))
+        .filter((entity) => model[entity.propertyName] === null)
+        .map((entity) => entity.relationship);
   }
 
   protected isValidToManyRelation(objects: Array<any>): boolean {
