@@ -24,13 +24,25 @@ export class JsonApiModel {
 
   lastSyncModels: Array<any>;
 
-  constructor(private internalDatastore: JsonApiDatastore, data?: any) {
+  constructor(private internalDatastore: JsonApiDatastore, protected data?: any) {
     if (data) {
       this.modelInitialization = true;
       this.id = data.id;
       Object.assign(this, data.attributes);
       this.modelInitialization = false;
     }
+  }
+
+  get meta(): any {
+    return this.data.meta;
+  }
+
+  set meta(meta: any) {
+    this.data.meta = meta;
+  }
+
+  get relationships(): any {
+    return this.data.relationships;
   }
 
   public isModelInitialization(): boolean {

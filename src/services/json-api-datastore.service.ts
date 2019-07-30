@@ -368,7 +368,10 @@ export class JsonApiDatastore {
     }
 
     const deserializedModel = model || this.deserializeModel(modelType, body.data);
+
+    Object.assign(deserializedModel, this.parseMeta(body.data, modelType));
     this.addToStore(deserializedModel);
+
     if (body.included) {
       deserializedModel.syncRelationships(body.data, body.included);
       this.addToStore(deserializedModel);
