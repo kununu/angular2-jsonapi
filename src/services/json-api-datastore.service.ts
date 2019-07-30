@@ -214,8 +214,11 @@ export class JsonApiDatastore {
     return queryParams ? `${url}?${queryParams}` : url;
   }
 
-  protected getRelationships<T extends JsonApiModel>(data: T): any {
+  protected getRelationships<T extends JsonApiModel>(data: any): any {
     let relationships: any;
+
+    const belongsToMetadata: any[] = Reflect.getMetadata('BelongsTo', data) || [];
+    const hasManyMetadata: any[] = Reflect.getMetadata('HasMany', data) || [];
 
     for (const key in data) {
       if (data.hasOwnProperty(key)) {
@@ -225,7 +228,9 @@ export class JsonApiDatastore {
           relationships = relationships || {};
 
           if (data[key].id) {
-            relationships[key] = {
+            const entity = belongsToMetadata.find((entity: any) => entity.propertyName === key);
+            const relationshipKey = entity.relationship;
+            relationships[relationshipKey] = {
               data: this.buildSingleRelationshipData(data[key])
             };
           }
@@ -239,6 +244,20 @@ export class JsonApiDatastore {
           relationships[key] = {
             data: relationshipData
           };
+        } else if (data[key] instanceof Array) {
+          const entity = hasManyMetadata.find((entity: any) => entity.propertyName === key);
+          if (entity && this.isValidToManyRelation(data[key])) {
+            relationships = relationships || {};
+
+            const relationshipKey = entity.relationship;
+            const relationshipData = data[key]
+              .filter((model: JsonApiModel) => model.id)
+              .map((model: JsonApiModel) => this.buildSingleRelationshipData(model));
+
+            relationships[relationshipKey] = {
+              data: relationshipData
+            };
+          }
         }
       }
     }
@@ -262,10 +281,17 @@ export class JsonApiDatastore {
   }
 
   protected isValidToManyRelation(objects: Array<any>): boolean {
+    if (!objects.length) {
+      return true;
+    }
     const isJsonApiModel = objects.every((item) => item instanceof JsonApiModel);
-    const relationshipType: string = isJsonApiModel ? objects[0].modelConfig.type : '';
-
-    return isJsonApiModel ? objects.every((item: JsonApiModel) => item.modelConfig.type === relationshipType) : false;
+    if (!isJsonApiModel) {
+      return false;
+    }
+    const types = objects.map((item: JsonApiModel) => item.modelConfig.modelEndpointUrl || item.modelConfig.type);
+    return types
+      .filter((type: string, index: number, self: string[]) => self.indexOf(type) === index)
+      .length === 1;
   }
 
   protected buildSingleRelationshipData(model: JsonApiModel): any {
