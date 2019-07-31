@@ -214,20 +214,27 @@ export class JsonApiDatastore {
     return queryParams ? `${url}?${queryParams}` : url;
   }
 
-  protected getRelationships(data: any): any {
+  protected getRelationships<T extends JsonApiModel>(data: any): any {
     let relationships: any;
+
+    const belongsToMetadata: any[] = Reflect.getMetadata('BelongsTo', data) || [];
+    const hasManyMetadata: any[] = Reflect.getMetadata('HasMany', data) || [];
 
     for (const key in data) {
       if (data.hasOwnProperty(key)) {
-        if (data[key] instanceof JsonApiModel) {
+        const value: any = data[key];
+
+        if (value instanceof JsonApiModel) {
           relationships = relationships || {};
 
           if (data[key].id) {
-            relationships[key] = {
+            const entity = belongsToMetadata.find((entity: any) => entity.propertyName === key);
+            const relationshipKey = entity.relationship;
+            relationships[relationshipKey] = {
               data: this.buildSingleRelationshipData(data[key])
             };
           }
-        } else if (data[key] instanceof Array && data[key].length > 0 && this.isValidToManyRelation(data[key])) {
+        } else if (value instanceof Array && data[key].length > 0 && this.isValidToManyRelation(data[key])) {
           relationships = relationships || {};
 
           const relationshipData = data[key]
@@ -237,18 +244,54 @@ export class JsonApiDatastore {
           relationships[key] = {
             data: relationshipData
           };
+        } else if (data[key] instanceof Array) {
+          const entity = hasManyMetadata.find((entity: any) => entity.propertyName === key);
+          if (entity && this.isValidToManyRelation(data[key])) {
+            relationships = relationships || {};
+
+            const relationshipKey = entity.relationship;
+            const relationshipData = data[key]
+              .filter((model: JsonApiModel) => model.id)
+              .map((model: JsonApiModel) => this.buildSingleRelationshipData(model));
+
+            relationships[relationshipKey] = {
+              data: relationshipData
+            };
+          }
         }
       }
     }
 
+    this.relationsToBeDeleted(data).forEach((toDelete) => {
+      relationships = relationships || {};
+      relationships[toDelete] = { data: null };
+    });
+
     return relationships;
   }
 
-  protected isValidToManyRelation(objects: Array<any>): boolean {
-    const isJsonApiModel = objects.every((item) => item instanceof JsonApiModel);
-    const relationshipType: string = isJsonApiModel ? objects[0].modelConfig.type : '';
+  private relationsToBeDeleted<T extends JsonApiModel>(model: T) {
+    const belongsToMetadata: [{propertyName: string, relationship: string}] = Reflect.getMetadata('BelongsTo', model);
 
-    return isJsonApiModel ? objects.every((item: JsonApiModel) => item.modelConfig.type === relationshipType) : false;
+    return belongsToMetadata == null
+      ? []
+      : belongsToMetadata.filter((entity) => model.hasOwnProperty(entity.propertyName))
+        .filter((entity) => model[entity.propertyName] === null)
+        .map((entity) => entity.relationship);
+  }
+
+  protected isValidToManyRelation(objects: Array<any>): boolean {
+    if (!objects.length) {
+      return true;
+    }
+    const isJsonApiModel = objects.every((item) => item instanceof JsonApiModel);
+    if (!isJsonApiModel) {
+      return false;
+    }
+    const types = objects.map((item: JsonApiModel) => item.modelConfig.modelEndpointUrl || item.modelConfig.type);
+    return types
+      .filter((type: string, index: number, self: string[]) => self.indexOf(type) === index)
+      .length === 1;
   }
 
   protected buildSingleRelationshipData(model: JsonApiModel): any {
@@ -325,7 +368,10 @@ export class JsonApiDatastore {
     }
 
     const deserializedModel = model || this.deserializeModel(modelType, body.data);
+
+    Object.assign(deserializedModel, this.parseMeta(body.data, modelType));
     this.addToStore(deserializedModel);
+
     if (body.included) {
       deserializedModel.syncRelationships(body.data, body.included);
       this.addToStore(deserializedModel);

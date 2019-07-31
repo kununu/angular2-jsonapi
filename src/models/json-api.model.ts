@@ -24,13 +24,25 @@ export class JsonApiModel {
 
   lastSyncModels: Array<any>;
 
-  constructor(private internalDatastore: JsonApiDatastore, data?: any) {
+  constructor(private internalDatastore: JsonApiDatastore, protected data?: any) {
     if (data) {
       this.modelInitialization = true;
       this.id = data.id;
       Object.assign(this, data.attributes);
       this.modelInitialization = false;
     }
+  }
+
+  get meta(): any {
+    return this.data.meta;
+  }
+
+  set meta(meta: any) {
+    this.data.meta = meta;
+  }
+
+  get relationships(): any {
+    return this.data.relationships;
   }
 
   public isModelInitialization(): boolean {
@@ -45,7 +57,7 @@ export class JsonApiModel {
     if (data) {
       let modelsForProcessing = remainingModels;
 
-      if (!modelsForProcessing) {
+      if (modelsForProcessing === undefined) {
         modelsForProcessing = [].concat(included);
       }
 
@@ -120,7 +132,7 @@ export class JsonApiModel {
       for (const metadata of hasMany) {
         const relationship: any = data.relationships ? data.relationships[metadata.relationship] : null;
 
-        if (relationship && relationship.data && relationship.data.length > 0) {
+        if (relationship && relationship.data && Array.isArray(relationship.data)) {
           let allModels: JsonApiModel[] = [];
           const modelTypesFetched: any = [];
 
@@ -148,11 +160,9 @@ export class JsonApiModel {
                 throw { message: `parseHasMany - Model type for relationship ${typeName} not found.` };
               }
             }
-
-            if (allModels.length > 0) {
-              this[metadata.propertyName] = allModels;
-            }
           }
+
+          this[metadata.propertyName] = allModels;
         }
       }
     }
@@ -202,16 +212,18 @@ export class JsonApiModel {
     const relationshipList: Array<T> = [];
 
     data.forEach((item: any) => {
-      const relationshipData: any = find(remainingModels, { id: item.id, type: typeName } as any);
+      const relationshipData: any = find(included, { id: item.id, type: typeName } as any);
 
       if (relationshipData) {
         const newObject: T = this.createOrPeek(modelType, relationshipData);
 
         const indexOfNewlyFoundModel = remainingModels.indexOf(relationshipData);
         const modelsForProcessing = remainingModels.concat([]);
-        modelsForProcessing.splice(indexOfNewlyFoundModel, 1);
 
-        newObject.syncRelationships(relationshipData, included, modelsForProcessing);
+        if (indexOfNewlyFoundModel !== -1) {
+          modelsForProcessing.splice(indexOfNewlyFoundModel, 1);
+          newObject.syncRelationships(relationshipData, included, modelsForProcessing);
+        }
 
         relationshipList.push(newObject);
       }
@@ -229,16 +241,18 @@ export class JsonApiModel {
   ): T | null {
     const id: string = data.id;
 
-    const relationshipData: any = find(remainingModels, { id, type: typeName } as any);
+    const relationshipData: any = find(included, { id, type: typeName } as any);
 
     if (relationshipData) {
       const newObject: T = this.createOrPeek(modelType, relationshipData);
 
       const indexOfNewlyFoundModel = remainingModels.indexOf(relationshipData);
       const modelsForProcessing = remainingModels.concat([]);
-      modelsForProcessing.splice(indexOfNewlyFoundModel, 1);
 
-      newObject.syncRelationships(relationshipData, included, modelsForProcessing);
+      if (indexOfNewlyFoundModel !== -1) {
+        modelsForProcessing.splice(indexOfNewlyFoundModel, 1);
+        newObject.syncRelationships(relationshipData, included, modelsForProcessing);
+      }
 
       return newObject;
     }
