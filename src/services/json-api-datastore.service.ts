@@ -459,7 +459,11 @@ export class JsonApiDatastore {
     }
   }
 
-  protected resetMetadataAttributes<T extends JsonApiModel>(res: T, attributesMetadata: any, modelType: ModelType<T>) {
+  protected resetMetadataAttributes<T extends JsonApiModel>(
+    res: any,
+    attributesMetadata: any,
+    modelType: ModelType<T>,
+  ) {
     for (const propertyName in attributesMetadata) {
       if (attributesMetadata.hasOwnProperty(propertyName)) {
         const metadata: any = attributesMetadata[propertyName];
